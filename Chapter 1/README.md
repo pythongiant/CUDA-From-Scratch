@@ -65,6 +65,8 @@ A **kernel** is a function that runs on the GPU. When you launch a kernel, you t
 
 Each run of the function is a **thread**. Threads are grouped into **blocks**, and blocks are arranged in a **grid**.
 
+In CUDA, kernels are marked with the `__global__` keyword. This tells the compiler that the function can be called from the host (CPU) code but will execute on the device (GPU). The double underscores indicate it's a CUDA-specific extension to C/C++, distinguishing kernel functions from regular functions that run on the CPU.
+
 Don't worry about the details yet - we'll see this in action in the next chapter.
 
 ## Why CUDA Feels Different
