@@ -1,45 +1,78 @@
-# Chapter 2 — The CUDA Execution Model (From Code to Hardware)
+# Chapter 2: Your First CUDA Program - Understanding How Code Runs on GPU
 
-This chapter explains **how a CUDA kernel actually runs on real GPU hardware**, and why CUDA looks the way it does.
+Now we get hands-on! You'll write and run your first CUDA program. We'll see how the abstract concepts from Chapter 1 become real code.
 
----
+## What You'll Build
 
-## 2.1 The Three-Level Hierarchy
+A program that demonstrates:
+- Writing a function that runs on the GPU (kernel)
+- Launching 256 copies of that function simultaneously
+- Each "copy" processes different data
+- Seeing the results back on the CPU
 
-CUDA's execution model maps software to hardware through three nested levels:
+## The Basic Structure
 
-### Grid → Streaming Multiprocessors (SMs)
-When you launch a kernel with `<<<blocks, threads>>>`, you create a **grid** of blocks. The GPU's scheduler distributes these blocks across available SMs. Each SM can run multiple blocks concurrently, but blocks never migrate—once assigned, a block stays on its SM until completion.
+Every CUDA program has two parts:
 
-### Block → SM Resident Workload
-A block is a collection of threads that share fast on-chip memory and can synchronize with `__syncthreads()`. All threads in a block execute on the same SM, which is why synchronization works—they share hardware resources. The block size you choose (like `threads_per_block = 64`) determines resource usage per block.
+1. **CPU code** - main program, memory management
+2. **GPU code** - the parallel kernel function
 
-### Warp → Execution Unit
-The SM doesn't execute individual threads. It executes **warps**—groups of 32 threads in lockstep. This is the fundamental execution width of NVIDIA GPUs. Every thread in a warp executes the same instruction at the same time on the SM's CUDA cores.
+## Your First Kernel
 
----
-
-## 2.2 Why Warps Exist
-
-The warp is hardware reality, not abstraction. Modern GPUs achieve high throughput by executing the same instruction across 32 threads simultaneously—Single Instruction, Multiple Thread (SIMT) execution.
+Here's the GPU function we'll write:
 
 ```cpp
-int warp_id = local_idx / 32;
-int lane_id = local_idx % 32;
+__global__ void execution_model_demo(int *out, int N)
+{
+    // Each thread figures out which data element it should handle
+    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int local_idx  = threadIdx.x;
+
+    // Skip if this thread is beyond our data size
+    if (global_idx >= N) return;
+
+    // Calculate which "warp" this thread is in (group of 32 threads)
+    int warp_id   = local_idx / 32;
+    int lane_id   = local_idx % 32;
+
+    // Intentional branching to show warp divergence
+    int value;
+    if (lane_id < 16) {
+        value = global_idx * 2;  // First half of warp does this
+    } else {
+        value = global_idx * 3;  // Second half does this
+    }
+
+    // All threads in block must reach here before any can continue
+    __syncthreads();
+
+    // Write result to memory
+    out[global_idx] = value;
+}
 ```
 
-These calculations expose the underlying execution groups. In a block of 64 threads:
-- Threads 0-31 form warp 0
-- Threads 32-63 form warp 1
+## Understanding the Key Parts
 
-Each warp gets scheduled independently, but threads within a warp move together.
+### Thread Identity
+```cpp
+int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+```
 
----
+- `threadIdx.x` - This thread's position within its block (0-63)
+- `blockIdx.x` - Which block this thread is in (0-3 for our example)
+- `blockDim.x` - How many threads per block (64 in our case)
 
-## 2.3 Warp Divergence — The Hidden Cost
+So thread 5 in block 2 has `global_idx = 2 * 64 + 5 = 133`.
 
-Consider this branching code:
+### Warps - The Real Execution Unit
+```cpp
+int warp_id = local_idx / 32;    // Which group of 32 threads
+int lane_id = local_idx % 32;    // Position within the group
+```
 
+GPU hardware runs threads in groups of 32 called **warps**. All 32 threads in a warp execute the same instruction at the same time.
+
+### Warp Divergence - Why Branching Hurts
 ```cpp
 if (lane_id < 16) {
     value = global_idx * 2;
@@ -48,115 +81,111 @@ if (lane_id < 16) {
 }
 ```
 
-Within a single warp, 16 threads take the first path and 16 take the second. But the hardware executes both paths **serially**:
+Within one warp:
+- Threads 0-15: multiply by 2
+- Threads 16-31: multiply by 3
 
-1. First, lanes 0-15 execute `value = global_idx * 2` while lanes 16-31 wait (masked off)
-2. Then, lanes 16-31 execute `value = global_idx * 3` while lanes 0-15 wait
+The hardware runs these **sequentially**, not in parallel! The whole warp waits while first the "if" executes, then the "else".
 
-The warp takes the time of both paths combined. This is **warp divergence**—when threads in the same warp follow different control flow paths, execution serializes. Performance degrades proportionally to the number of divergent paths.
-
-Different warps can diverge freely without penalty—they execute independently. Divergence only matters within a warp.
-
----
-
-## 2.4 Block-Level Synchronization
-
+### Synchronization
 ```cpp
 __syncthreads();
 ```
 
-This barrier ensures all threads in the block reach this point before any proceed. It's implemented in hardware using the SM's synchronization logic. Crucially:
+All threads in the same block must reach this point before any can continue. This is crucial when threads need to share data.
 
-- **Scope**: Only threads in the same block synchronize
-- **Hardware requirement**: All threads in the block must be resident on the same SM
-- **Warp consideration**: If any thread in a warp can reach the barrier, all threads in that warp must be able to reach it (otherwise deadlock)
+## Running the Program
 
-You cannot synchronize across blocks—they may run on different SMs, at different times, or even be scheduled after other blocks complete.
-
----
-
-## 2.5 Memory and Thread Identity
-
-```cpp
-int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+### 1. Compile
+```bash
+nvcc execute_model_demo.cu -o demo
 ```
 
-This formula maps a thread's 2D identity (block + position within block) to a 1D index for memory access. The GPU provides:
-
-- `blockIdx`: Which block this thread belongs to
-- `blockDim`: How many threads per block (constant across launch)
-- `threadIdx`: Position within the block (0 to `blockDim - 1`)
-
-Each thread uses these to compute unique memory locations:
-
-```cpp
-out[global_idx] = value;
+### 2. Run
+```bash
+./demo
 ```
 
-Memory writes happen independently—there's no guaranteed ordering between threads unless you explicitly synchronize. The hardware may coalesce adjacent memory accesses from the same warp into efficient transactions, but that's a performance optimization, not a semantic guarantee.
-
----
-
-## 2.6 The Guard Pattern
-
-```cpp
-if (global_idx >= N) return;
+### 3. What You'll See
+```
+Index   0 -> 0    # lane_id=0 (<16) so 0*2 = 0
+Index   1 -> 2    # lane_id=1 (<16) so 1*2 = 2
+...
+Index  15 -> 30   # lane_id=15 (<16) so 15*2 = 30
+Index  16 -> 48   # lane_id=16 (>=16) so 16*3 = 48
+Index  17 -> 51   # lane_id=17 (>=16) so 17*3 = 51
+...
 ```
 
-Grids usually launch more threads than needed for clean division:
+Notice the pattern change at index 16, 48, 80, etc. - this shows where warps begin.
 
-```cpp
-int blocks = (N + threads_per_block - 1) / threads_per_block;
-```
+## Launch Configuration
 
-If `N = 256` and `threads_per_block = 64`, you get 4 blocks = 256 threads exactly. But if `N = 250`, you still launch 4 blocks = 256 threads. The extra 6 threads in the last warp must check bounds and exit early.
-
-Early returns don't help performance within a warp—if any thread continues, the whole warp waits. But they prevent out-of-bounds memory writes.
-
----
-
-## 2.7 Launch Configuration
+When you launch a kernel:
 
 ```cpp
 execution_model_demo<<<blocks, threads_per_block>>>(d_out, N);
 ```
 
-The `<<<...>>>` syntax specifies the grid geometry:
-- **Left parameter** (`blocks`): How many blocks in the grid
-- **Right parameter** (`threads_per_block`): How many threads per block
+- `blocks = 4` - Launch 4 blocks
+- `threads_per_block = 64` - 64 threads each
+- Total: 256 threads for N=256 elements
 
-Choosing these values involves tradeoffs:
+The GPU scheduler assigns blocks to available processors and manages execution.
 
-**Block size too small**: Underutilizes SM resources, exposes scheduling overhead
+## Key Concepts You Just Saw
 
-**Block size too large**: May limit blocks per SM due to resource constraints (registers, shared memory)
+- **Threads are independent workers** - Each handles one data element
+- **Warps execute together** - 32 threads move as a unit
+- **Divergence hurts performance** - Branches within a warp slow everything down
+- **Blocks can synchronize** - `__syncthreads()` coordinates within a block
+- **No guaranteed order** - Threads finish in any order
 
-Common block sizes: 128, 256, 512 threads (always multiples of 32 for warp alignment)
+## Try Modifying the Code
 
----
+1. **Change the branching condition:**
+   ```cpp
+   if (lane_id < 8) {  // Only first quarter
+       value = global_idx * 2;
+   } else {
+       value = global_idx * 3;
+   }
+   ```
+   See how this affects performance.
 
-## 2.8 What the Hardware Actually Does
+2. **Add more synchronization:**
+   ```cpp
+   __syncthreads();
+   // Do some work
+   __syncthreads();
+   // Do more work
+   ```
 
-When this kernel launches:
+3. **Experiment with different block sizes:**
+   ```cpp
+   const int threads_per_block = 128;  // Try 32, 64, 128, 256
+   ```
 
-1. **Grid distribution**: The GPU scheduler assigns blocks to available SMs
-2. **Warp formation**: Each SM groups block threads into warps of 32
-3. **Warp scheduling**: The SM rapidly switches between warps to hide latency (memory access, ALU operations)
-4. **SIMT execution**: Each warp executes one instruction across 32 threads per cycle
-5. **Divergence handling**: Warps serialize execution at branches, using predication masks
-6. **Synchronization**: `__syncthreads()` pauses warp scheduling until all block warps reach the barrier
-7. **Memory operations**: Coalesced writes from warps to global memory
+## What Happens Inside the GPU
 
-The result you see in the output reflects this execution—each thread computed its value, but the order of execution and memory writes followed hardware scheduling, not source code order.
+When you launch the kernel:
 
----
+1. GPU creates 4 blocks of 64 threads each = 256 threads
+2. Each block gets assigned to a processor
+3. Processors break threads into warps (groups of 32)
+4. Warps execute instructions, switching rapidly to hide memory delays
+5. When threads diverge, execution serializes within the warp
+6. Results get written to GPU memory, then copied back to CPU
+
+## Next Steps
+
+You now understand how CUDA code actually executes! In Chapter 3, we'll learn about GPU memory - why it's so important for performance.
 
 ## Key Takeaways
 
-- **Warps are real**: 32 threads execute as a unit on the hardware
-- **Divergence costs performance**: Branching within a warp serializes execution
-- **Blocks enable cooperation**: Shared memory and synchronization work within a block
-- **Memory accesses are independent**: No ordering guarantees without explicit synchronization
-- **Resource limits matter**: Block size affects SM occupancy and performance
-
-The CUDA execution model exists because this is how GPU hardware achieves massive parallelism—thousands of threads sharing hardware through rapid context switching and SIMT execution. Understanding this mapping from code to hardware is essential for writing efficient CUDA kernels.
+- **Kernels are functions that run on GPU**
+- **Threads are independent workers**
+- **Warps (32 threads) execute together**
+- **Branching within warps hurts performance**
+- **Blocks can synchronize with `__syncthreads()`**
+- **Launch configuration controls parallelism**
