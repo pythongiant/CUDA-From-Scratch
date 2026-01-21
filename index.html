@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUDA Programming: From Zero to GPU Kernels</title>
+    <style>
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3, h4 {
+            color: #333;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        h1 { font-size: 2em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
+        h2 { font-size: 1.5em; }
+        h3 { font-size: 1.2em; }
+        p { margin-bottom: 1em; }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1em 0;
+        }
+        blockquote {
+            border-left: 4px solid #ccc;
+            padding-left: 15px;
+            margin: 1em 0;
+            font-style: italic;
+        }
+        ul, ol { margin: 1em 0; padding-left: 2em; }
+        li { margin-bottom: 0.5em; }
+        .toc {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 2em;
+        }
+        .toc h2 { margin-top: 0; }
+        .toc ul { list-style-type: none; padding-left: 0; }
+        .toc li { margin: 0.5em 0; }
+        .chapter { page-break-before: always; margin-top: 3em; }
+        @media print {
+            body { background-color: white; }
+            .toc { page-break-after: always; }
+        }
+    </style>
+</head>
+<body>
+    <h1>CUDA Programming: From Zero to GPU Kernels</h1>
+    <p>Hi! I am <a href="github.com/pythongiant"> Srihari Unnikrishnan(@pythongiant)</a> and this is a small primer on transformers, encoder-decoder transformers and generating text with a decoder-only transformer.
+
+Send me an email at <a href="mailto:srihari.unnikrishnan@gmail.com"> srihari[dot]unnikrishnan[at]gmail[dot]com </a> if you have any questions or any suggestions/recommendations!
+I would be more than glad to help you out.</p>
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#introduction">Introduction</a></li>
+            <li><a href="#chapter1">Chapter 1: Why GPUs Exist</a></li>
+            <li><a href="#chapter2">Chapter 2: How CUDA Code Runs</a></li>
+            <li><a href="#chapter3">Chapter 3: GPU Memory Magic</a></li>
+            <li><a href="#chapter4">Chapter 4: Common Speed-Up Patterns</a></li>
+            <li><a href="#chapter5">Chapter 5: Using CUDA in Python/PyTorch</a></li>
+        </ul>
+    </div>
+
+    <div id="introduction">
+        <h1>Introduction</h1>
+        <p>Ever wanted to harness the power of your GPU for lightning-fast computations? This guide takes you from having no GPU knowledge to writing your own CUDA kernels that can speed up your code by 10-100x.</p>
+
+        <h2>What You'll Learn</h2>
+        <p>This isn't just another technical manual. We'll build your intuition step by step:</p>
+        <ul>
+            <li><strong>Why GPUs are different from CPUs</strong> (and why that matters for your code)</li>
+            <li><strong>How to write parallel code</strong> that runs thousands of operations simultaneously</li>
+            <li><strong>GPU memory tricks</strong> to make your code run fast</li>
+            <li><strong>Common patterns</strong> for speeding up real algorithms</li>
+            <li><strong>Connecting GPU code to Python/PyTorch</strong> for machine learning</li>
+        </ul>
+
+        <h2>Who This Is For</h2>
+        <ul>
+            <li>You're comfortable with basic programming (loops, functions, arrays)</li>
+            <li>You want to speed up computations (machine learning, simulations, data processing)</li>
+            <li>You're tired of slow code and want to understand why it's slow</li>
+            <li>You have a CUDA-capable GPU (NVIDIA graphics card)</li>
+        </ul>
+        <p><strong>No prior GPU knowledge required!</strong> We'll explain everything from the ground up.</p>
+
+        <h2>How to Use This Guide</h2>
+        <p>Each chapter builds on the previous one. Start with Chapter 1 and work through in order.</p>
+        <ol>
+            <li><strong>Read the explanations</strong> - we use simple analogies (like comparing CPUs to chefs and GPUs to assembly lines)</li>
+            <li><strong>Run the code examples</strong> - see the concepts in action</li>
+            <li><strong>Experiment</strong> - modify the code and see what happens</li>
+            <li><strong>Apply to your problems</strong> - adapt the patterns to your own code</li>
+        </ol>
+
+        <h2>Chapters Overview</h2>
+
+        <h3>Chapter 1: Why GPUs Exist</h3>
+        <p><strong>The big picture: CPUs vs GPUs</strong></p>
+        <ul>
+            <li>Why your gaming GPU can also do serious computing</li>
+            <li>Simple analogy: chefs vs. assembly lines</li>
+            <li>What problems GPUs excel at</li>
+        </ul>
+
+        <h3>Chapter 2: How CUDA Code Runs</h3>
+        <p><strong>Your first CUDA program</strong></p>
+        <ul>
+            <li>Writing functions that run on the GPU</li>
+            <li>Understanding threads, blocks, and grids</li>
+            <li>Running parallel code and seeing results</li>
+        </ul>
+
+        <h3>Chapter 3: GPU Memory Magic</h3>
+        <p><strong>Why memory is everything in GPU programming</strong></p>
+        <ul>
+            <li>Different types of GPU memory and their speeds</li>
+            <li>Patterns for fast memory access</li>
+            <li>Why bad memory usage can make your code 10x slower</li>
+        </ul>
+
+        <h3>Chapter 4: Common Speed-Up Patterns</h3>
+        <p><strong>Ready-to-use techniques for parallel computing</strong></p>
+        <ul>
+            <li>Element-wise operations (like vector addition)</li>
+            <li>Summing large arrays quickly</li>
+            <li>Image processing and neighborhood operations</li>
+        </ul>
+
+        <h3>Chapter 5: Using CUDA in Python/PyTorch</h3>
+        <p><strong>Connect GPU code to real applications</strong></p>
+        <ul>
+            <li>Writing custom operations for PyTorch</li>
+            <li>Automatic gradients for machine learning</li>
+            <li>Building and testing your GPU code</li>
+        </ul>
+
+        <h2>Getting Started</h2>
+        <ol>
+            <li><strong>Check your setup:</strong></li>
+        </ol>
+        <pre><code>nvidia-smi  # Should show your GPU
+nvcc --version  # Should show CUDA toolkit</code></pre>
+
+        <ol start="2">
+            <li><strong>Install requirements:</strong></li>
+        </ol>
+        <ul>
+            <li>CUDA Toolkit (free from NVIDIA)</li>
+            <li>C++ compiler</li>
+            <li>For Python integration: PyTorch with CUDA support</li>
+        </ul>
+
+        <ol start="3">
+            <li><strong>Start coding!</strong> Each chapter has working code you can compile and run.</li>
+        </ol>
+
+        <h2>What Makes This Different</h2>
+        <p>Most GPU guides throw technical terms at you. This guide:</p>
+        <ul>
+            <li>Uses everyday analogies you already understand</li>
+            <li>Shows working code from the start</li>
+            <li>Explains <em>why</em> things work the way they do</li>
+            <li>Builds intuition before diving into details</li>
+        </ul>
+        <p>By the end, you'll understand GPU programming deeply enough to write efficient code for your own problems.</p>
+
+        <h2>Ready to Start?</h2>
+        <p>Head to Chapter 1 to learn why GPUs can be so much faster than CPUs for the right problems.</p>
+    </div>
+
+    <div id="chapter1" class="chapter">
+        <h1>Chapter 1: Why GPUs Exist and What CUDA Is</h1>
+        <p>Welcome! By the end of this chapter, you'll understand why your gaming GPU can also do serious computing work. No technical background needed - we'll use simple analogies.</p>
+
+        <h2>The Big Problem Modern Computing Hit</h2>
+        <p>For years, computers got faster by making CPUs run at higher speeds. But around 2005, this stopped working. CPUs couldn't get any faster without melting or using insane amounts of power.</p>
+        <p>At the same time, people needed to solve bigger and bigger problems:</p>
+        <ul>
+            <li>Processing millions of pixels in games/graphics</li>
+            <li>Training AI models with billions of calculations</li>
+            <li>Simulating weather, physics, or financial markets</li>
+        </ul>
+        <p>These problems all have something in common: <strong>doing the same simple operation on huge amounts of data</strong>.</p>
+
+        <h2>CPUs vs GPUs: A Simple Analogy</h2>
+        <p>Imagine you're running a restaurant:</p>
+
+        <h3>CPU = Skilled Chef</h3>
+        <ul>
+            <li>One highly trained chef</li>
+            <li>Can cook anything: complex recipes, handle special requests</li>
+            <li>Very flexible but expensive and slow for simple tasks</li>
+            <li>Good for: custom orders, complex dishes</li>
+        </ul>
+
+        <h3>GPU = Assembly Line Workers</h3>
+        <ul>
+            <li>Hundreds of simple workers</li>
+            <li>Each does one basic task (chop vegetables, flip burgers)</li>
+            <li>Can't handle complex recipes, but incredibly fast at repetitive work</li>
+            <li>Good for: making 1000 identical burgers quickly</li>
+        </ul>
+        <p><strong>GPUs don't make one task fast. They make many identical tasks fast simultaneously.</strong></p>
+
+        <h2>What CUDA Actually Is</h2>
+        <p>CUDA is NVIDIA's system for writing programs that run on GPUs. It lets you:</p>
+        <ol>
+            <li>Write normal C/C++ code</li>
+            <li>Mark certain functions to run on the GPU</li>
+            <li>Tell the GPU to run that function thousands of times in parallel</li>
+        </ol>
+        <p>CUDA gives you <strong>direct control</strong> over the GPU. You decide exactly how work gets divided up and executed.</p>
+
+        <h2>The Two-World Model</h2>
+        <p>CUDA programs have two parts:</p>
+
+        <h3>CPU Side (Host)</h3>
+        <ul>
+            <li>Your main program runs here</li>
+            <li>Controls what happens</li>
+            <li>Sends work to the GPU</li>
+        </ul>
+
+        <h3>GPU Side (Device)</h3>
+        <ul>
+            <li>Does the parallel work</li>
+            <li>Has its own memory</li>
+            <li>Can't talk directly to the CPU</li>
+        </ul>
+        <p><strong>You must explicitly copy data between CPU and GPU memory.</strong></p>
+
+        <h2>Your First CUDA Concept: The Kernel</h2>
+        <p>A <strong>kernel</strong> is a function that runs on the GPU. When you launch a kernel, you tell the GPU:</p>
+        <p><em>"Run this function 10,000 times, each time with different data"</em></p>
+        <p>Each run of the function is a <strong>thread</strong>. Threads are grouped into <strong>blocks</strong>, and blocks are arranged in a <strong>grid</strong>.</p>
+        <p>Don't worry about the details yet - we'll see this in action in the next chapter.</p>
+
+        <h2>Why CUDA Feels Different</h2>
+        <p>CUDA doesn't automatically make your code parallel. You have to:</p>
+        <ul>
+            <li>Design your algorithm to work in parallel</li>
+            <li>Manage memory transfers between CPU/GPU</li>
+            <li>Handle synchronization between parallel tasks</li>
+        </ul>
+        <p>This makes CUDA more work than automatic systems, but you get <strong>predictable, high performance</strong>.</p>
+
+        <h2>When CUDA Makes Sense</h2>
+        <p>Use CUDA when you have:</p>
+        <ul>
+            <li><strong>Lots of data</strong> (millions/billions of elements)</li>
+            <li><strong>Simple operations</strong> on each element</li>
+            <li><strong>Independent work</strong> (one element doesn't depend on others)</li>
+        </ul>
+        <p>Don't use CUDA for:</p>
+        <ul>
+            <li>Small amounts of work</li>
+            <li>Complex, branching logic</li>
+            <li>Problems that are naturally sequential</li>
+        </ul>
+
+        <h2>Try It Yourself</h2>
+        <p>This chapter doesn't have code yet - we're building concepts first. But here's what we'll do in the next chapter:</p>
+        <pre><code>// A simple kernel that adds 1 to each element
+__global__ void addOne(int* data, int N) {
+    int i = /* figure out which element this thread should handle */;
+    if (i < N) {
+        data[i] = data[i] + 1;
+    }
+}</code></pre>
+        <p>In Chapter 2, we'll run this code and see how it works!</p>
+
+        <h2>Key Takeaways</h2>
+        <ul>
+            <li><strong>GPUs are great at repetitive work on lots of data</strong></li>
+            <li><strong>CUDA lets you control the GPU directly</strong></li>
+            <li><strong>Programs run in two worlds: CPU and GPU</strong></li>
+            <li><strong>You must manage data movement yourself</strong></li>
+            <li><strong>Performance comes from smart parallel design</strong></li>
+        </ul>
+        <p>Ready for your first CUDA program? Let's go to Chapter 2!</p>
+    </div>
+
+    <div id="chapter2" class="chapter">
+        <h1>Chapter 2: Your First CUDA Program - Understanding How Code Runs on GPU</h1>
+        <p>Now we get hands-on! You'll write and run your first CUDA program. We'll see how the abstract concepts from Chapter 1 become real code.</p>
+
+        <h2>What You'll Build</h2>
+        <p>A program that demonstrates:</p>
+        <ul>
+            <li>Writing a function that runs on the GPU (kernel)</li>
+            <li>Launching 256 copies of that function simultaneously</li>
+            <li>Each "copy" processes different data</li>
+            <li>Seeing the results back on the CPU</li>
+        </ul>
+
+        <h2>The Basic Structure</h2>
+        <p>Every CUDA program has two parts:</p>
+        <ol>
+            <li><strong>CPU code</strong> - main program, memory management</li>
+            <li><strong>GPU code</strong> - the parallel kernel function</li>
+        </ol>
+
+        <h2>Your First Kernel</h2>
+        <p>Here's the GPU function we'll write:</p>
+        <pre><code>__global__ void execution_model_demo(int *out, int N)
+{
+    // Each thread figures out which data element it should handle
+    int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int local_idx  = threadIdx.x;
+
+    // Skip if this thread is beyond our data size
+    if (global_idx >= N) return;
+
+    // Calculate which "warp" this thread is in (group of 32 threads)
+    int warp_id   = local_idx / 32;
+    int lane_id   = local_idx % 32;
+
+    // Intentional branching to show warp divergence
+    int value;
+    if (lane_id < 16) {
+        value = global_idx * 2;  // First half of warp does this
+    } else {
+        value = global_idx * 3;  // Second half does this
+    }
+
+    // All threads in block must reach here before any can continue
+    __syncthreads();
+
+    // Write result to memory
+    out[global_idx] = value;
+}</code></pre>
+
+        <h2>Understanding the Key Parts</h2>
+
+        <h3>Thread Identity</h3>
+        <pre><code>int global_idx = blockIdx.x * blockDim.x + threadIdx.x;</code></pre>
+        <ul>
+            <li><code>threadIdx.x</code> - This thread's position within its block (0-63)</li>
+            <li><code>blockIdx.x</code> - Which block this thread is in (0-3 for our example)</li>
+            <li><code>blockDim.x</code> - How many threads per block (64 in our case)</li>
+        </ul>
+        <p>So thread 5 in block 2 has <code>global_idx = 2 * 64 + 5 = 133</code>.</p>
+
+        <h3>Warps - The Real Execution Unit</h3>
+        <pre><code>int warp_id = local_idx / 32;    // Which group of 32 threads
+int lane_id = local_idx % 32;    // Position within the group</code></pre>
+        <p>GPU hardware runs threads in groups of 32 called <strong>warps</strong>. All 32 threads in a warp execute the same instruction at the same time.</p>
+
+        <h3>Warp Divergence - Why Branching Hurts</h3>
+        <pre><code>if (lane_id < 16) {
+    value = global_idx * 2;
+} else {
+    value = global_idx * 3;
+}</code></pre>
+        <p>Within one warp:</p>
+        <ul>
+            <li>Threads 0-15: multiply by 2</li>
+            <li>Threads 16-31: multiply by 3</li>
+        </ul>
+        <p>The hardware runs these <strong>sequentially</strong>, not in parallel! The whole warp waits while first the "if" executes, then the "else".</p>
+
+        <h3>Synchronization</h3>
+        <pre><code>__syncthreads();</code></pre>
+        <p>All threads in the same block must reach this point before any can continue. This is crucial when threads need to share data.</p>
+
+        <h2>Running the Program</h2>
+
+        <h3>1. Compile</h3>
+        <pre><code>nvcc execute_model_demo.cu -o demo</code></pre>
+
+        <h3>2. Run</h3>
+        <pre><code>./demo</code></pre>
+
+        <h3>3. What You'll See</h3>
+        <pre><code>Index   0 -> 0    # lane_id=0 (<16) so 0*2 = 0
+Index   1 -> 2    # lane_id=1 (<16) so 1*2 = 2
+...
+Index  15 -> 30   # lane_id=15 (<16) so 15*2 = 30
+Index  16 -> 48   # lane_id=16 (>=16) so 16*3 = 48
+Index  17 -> 51   # lane_id=17 (>=16) so 17*3 = 51
+...</code></pre>
+        <p>Notice the pattern change at index 16, 48, 80, etc. - this shows where warps begin.</p>
+
+        <h2>Launch Configuration</h2>
+        <p>When you launch a kernel:</p>
+        <pre><code>execution_model_demo<<<blocks, threads_per_block>>>(d_out, N);</code></pre>
+        <ul>
+            <li><code>blocks = 4</code> - Launch 4 blocks</li>
+            <li><code>threads_per_block = 64</code> - 64 threads each</li>
+            <li>Total: 256 threads for N=256 elements</li>
+        </ul>
+        <p>The GPU scheduler assigns blocks to available processors and manages execution.</p>
+
+        <h2>Key Concepts You Just Saw</h2>
+        <ul>
+            <li><strong>Threads are independent workers</strong> - Each handles one data element</li>
+            <li><strong>Warps execute together</strong> - 32 threads move as a unit</li>
+            <li><strong>Divergence hurts performance</strong> - Branches within a warp slow everything down</li>
+            <li><strong>Blocks can synchronize</strong> - <code>__syncthreads()</code> coordinates within a block</li>
+            <li><strong>No guaranteed order</strong> - Threads finish in any order</li>
+        </ul>
+
+        <h2>Try Modifying the Code</h2>
+
+        <ol>
+            <li><strong>Change the branching condition:</strong></li>
+        </ol>
+        <pre><code>if (lane_id < 8) {  // Only first quarter
+    value = global_idx * 2;
+} else {
+    value = global_idx * 3;
+}</code></pre>
+        <p>See how this affects performance.</p>
+
+        <ol start="2">
+            <li><strong>Add more synchronization:</strong></li>
+        </ol>
+        <pre><code>__syncthreads();
+// Do some work
+__syncthreads();
+// Do more work</code></pre>
+
+        <ol start="3">
+            <li><strong>Experiment with different block sizes:</strong></li>
+        </ol>
+        <pre><code>const int threads_per_block = 128;  // Try 32, 64, 128, 256</code></pre>
+
+        <h2>What Happens Inside the GPU</h2>
+        <p>When you launch the kernel:</p>
+        <ol>
+            <li>GPU creates 4 blocks of 64 threads each = 256 threads</li>
+            <li>Each block gets assigned to a processor</li>
+            <li>Processors break threads into warps (groups of 32)</li>
+            <li>Warps execute instructions, switching rapidly to hide memory delays</li>
+            <li>When threads diverge, execution serializes within the warp</li>
+            <li>Results get written to GPU memory, then copied back to CPU</li>
+        </ol>
+
+        <h2>Next Steps</h2>
+        <p>You now understand how CUDA code actually executes! In Chapter 3, we'll learn about GPU memory - why it's so important for performance.</p>
+
+        <h2>Key Takeaways</h2>
+        <ul>
+            <li><strong>Kernels are functions that run on GPU</strong></li>
+            <li><strong>Threads are independent workers</strong></li>
+            <li><strong>Warps (32 threads) execute together</strong></li>
+            <li><strong>Branching within warps hurts performance</strong></li>
+            <li><strong>Blocks can synchronize with <code>__syncthreads()</code></strong></li>
+            <li><strong>Launch configuration controls parallelism</strong></li>
+        </ul>
+    </div>
+
+    <div id="chapter3" class="chapter">
+        <h1>Chapter 3: GPU Memory - Why It's Everything for Performance</h1>
+        <p>In this chapter, you'll learn why memory is the #1 factor in GPU performance. Bad memory usage can make your code 10x slower. Good memory usage can make it 100x faster than CPU.</p>
+
+        <h2>The Memory Hierarchy You Must Understand</h2>
+        <p>GPUs have multiple types of memory, each with different speed/cost tradeoffs:</p>
+
+        <h3>Global Memory (Slow but Big)</h3>
+        <ul>
+            <li><strong>Size</strong>: 8-80 GB on modern GPUs</li>
+            <li><strong>Speed</strong>: ~400-800 cycles latency (very slow!)</li>
+            <li><strong>Who can access</strong>: All threads in all blocks</li>
+            <li><strong>Use for</strong>: Input data, final results</li>
+        </ul>
+
+        <h3>Shared Memory (Fast but Small)</h3>
+        <ul>
+            <li><strong>Size</strong>: 48-164 KB per processor</li>
+            <li><strong>Speed</strong>: ~20-30 cycles (100x faster than global!)</li>
+            <li><strong>Who can access</strong>: Only threads in the same block</li>
+            <li><strong>Use for</strong>: Temporary data that multiple threads need</li>
+        </ul>
+
+        <h3>Registers (Fastest but Limited)</h3>
+        <ul>
+            <li><strong>Size</strong>: ~32-64 KB per processor total</li>
+            <li><strong>Speed</strong>: 1 cycle (instant!)</li>
+            <li><strong>Who can access</strong>: Only the thread that owns it</li>
+            <li><strong>Use for</strong>: Variables used within a thread</li>
+        </ul>
+
+        <h2>The #1 Rule: Memory Access Patterns Matter</h2>
+        <p>The way threads access memory determines if your code is fast or slow.</p>
+
+        <h3>Good Pattern: Coalesced Access</h3>
+        <pre><code>// Thread 0 reads data[0], Thread 1 reads data[1], etc.
+// Hardware combines 32 reads into 1 big memory transaction
+int value = global_data[threadIdx.x];</code></pre>
+        <p><strong>Result</strong>: Full memory bandwidth utilization.</p>
+
+        <h3>Bad Pattern: Strided Access</h3>
+        <pre><code>// Thread 0 reads data[0], Thread 1 reads data[2], Thread 2 reads data[4]
+// Hardware can't combine - needs multiple transactions
+int value = global_data[threadIdx.x * 2];</code></pre>
+        <p><strong>Result</strong>: 2x-10x slower!</p>
+
+        <h3>Worst Pattern: Random Access</h3>
+        <pre><code>// Each thread reads a random location
+int value = global_data[random_indices[threadIdx.x]];</code></pre>
+        <p><strong>Result</strong>: Potentially 32x slower!</p>
+
+        <h2>Shared Memory: The Secret Weapon</h2>
+        <p>Shared memory is fast on-chip memory that threads in the same block can share.</p>
+
+        <h3>Use Case 1: Data Reuse</h3>
+        <p>Instead of each thread loading the same data from slow global memory:</p>
+        <pre><code>__shared__ float shared_data[256];
+
+// Load data
+shared_data[threadIdx.x] = global_data[blockIdx.x * 256 + threadIdx.x];
+__syncthreads();  // Wait for all loads to complete
+
+// Now all threads can read this data quickly
+float sum = 0;
+for (int i = 0; i < 256; i++) {
+    sum += shared_data[i];  // Fast shared memory reads
+}</code></pre>
+
+        <h3>Use Case 2: Fixing Bad Access Patterns</h3>
+        <p>When you need to transpose or reorganize data:</p>
+        <pre><code>__shared__ float tile[32][32];
+
+// Load data in coalesced way
+tile[threadIdx.y][threadIdx.x] = input[row * N + col];
+__syncthreads();
+
+// Write data in different pattern (also coalesced)
+output[col * N + row] = tile[threadIdx.x][threadIdx.y];</code></pre>
+
+        <h2>Bank Conflicts in Shared Memory</h2>
+        <p>Shared memory is divided into 32 banks. If multiple threads access the same bank simultaneously, accesses happen one at a time (serialized).</p>
+
+        <h3>No Conflict (Good)</h3>
+        <pre><code>__shared__ float data[128];
+float val = data[threadIdx.x];  // Each thread hits different bank</code></pre>
+
+        <h3>Bank Conflict (Bad)</h3>
+        <pre><code>float val = data[threadIdx.x * 2];  // Threads hit same banks</code></pre>
+
+        <h2>Hands-On: Run the Memory Demos</h2>
+        <p>The code in this chapter demonstrates these concepts:</p>
+        <ol>
+            <li><strong>Memory Hierarchy Demo</strong> - Shows different memory types and their performance.</li>
+            <li><strong>Coalesced vs Uncoalesced Access</strong> - Compare the performance difference.</li>
+            <li><strong>Bank Conflicts</strong> - See how shared memory access patterns affect speed.</li>
+        </ol>
+
+        <h3>Compile and Run</h3>
+        <pre><code>nvcc memory_management.cu -o memory_demo
+./memory_demo</code></pre>
+
+        <h2>Key Experiments</h2>
+
+        <h3>1. Change Access Patterns</h3>
+        <p>Modify the coalesced access to be uncoalesced:</p>
+        <pre><code>// Change this line in the kernel:
+int value = global_in[global_idx];  // Coalesced
+// To this:
+int value = global_in[global_idx * 2];  // Uncoalesced</code></pre>
+        <p>Measure the performance difference!</p>
+
+        <h3>2. Modify Shared Memory Usage</h3>
+        <p>Add more data reuse in the reduction example:</p>
+        <pre><code>// Instead of summing all elements once, sum them multiple times
+for (int repeat = 0; repeat < 10; repeat++) {
+    float sum = 0;
+    for (int i = 0; i < blockDim.x; i++) {
+        sum += shared_data[i];
+    }
+    // Use the sum somehow
+}</code></pre>
+
+        <h3>3. Experiment with Bank Conflicts</h3>
+        <p>Change the bank conflict pattern:</p>
+        <pre><code>// Try different strides
+int conflict_idx = (local_idx * 4) % blockDim.x;  // Stride-4</code></pre>
+
+        <h2>Understanding Performance</h2>
+
+        <h3>Memory-Bound vs Compute-Bound</h3>
+        <ul>
+            <li><strong>Memory-bound</strong>: Limited by how fast you can move data (most GPU code)</li>
+            <li><strong>Compute-bound</strong>: Limited by how fast you can do calculations</li>
+        </ul>
+
+        <h3>Occupancy Matters</h3>
+        <p>More active threads = more warps = better at hiding memory latency.</p>
+
+        <h3>The Bandwidth Goal</h3>
+        <p>Modern GPUs have 500-2000 GB/s memory bandwidth. Your goal: achieve 80%+ of that.</p>
+
+        <h2>Real-World Impact</h2>
+        <p>In the matrix multiplication example:</p>
+        <ul>
+            <li>Bad memory access: 50 GB/s (25% of peak)</li>
+            <li>Good memory access: 800 GB/s (80% of peak)</li>
+        </ul>
+        <p><strong>4x speedup just from better memory usage!</strong></p>
+
+        <h2>Next Steps</h2>
+        <p>You now understand GPU memory. In Chapter 4, we'll apply these patterns to real algorithms like reductions and image processing.</p>
+
+        <h2>Key Takeaways</h2>
+        <ul>
+            <li><strong>Memory access patterns determine performance</strong></li>
+            <li><strong>Coalesce global memory accesses</strong></li>
+            <li><strong>Use shared memory for data reuse</strong></li>
+            <li><strong>Avoid bank conflicts in shared memory</strong></li>
+            <li><strong>Most GPU code is memory-bound, not compute-bound</strong></li>
+            <li><strong>Good memory usage can give 10x+ speedups</strong></li>
+        </ul>
+    </div>
+
+    <div id="chapter4" class="chapter">
+        <h1>Chapter 4: Common Parallel Patterns - Speed Up Real Algorithms</h1>
+        <p>Now you know the basics! This chapter shows you <strong>ready-to-use patterns</strong> for speeding up real computations. These patterns appear in most GPU-accelerated code.</p>
+
+        <h2>What You'll Learn</h2>
+        <p>Four fundamental patterns that solve 90% of parallel problems:</p>
+        <ol>
+            <li><strong>Map</strong> - Apply the same operation to each element</li>
+            <li><strong>Reduce</strong> - Combine elements into a single value</li>
+            <li><strong>Scan</strong> - Compute running totals</li>
+            <li><strong>Stencil</strong> - Process neighborhoods (like image filters)</li>
+        </ol>
+
+        <h2>Pattern 1: Map - Element-wise Operations</h2>
+        <p><strong>Use when</strong>: Each output depends only on the corresponding input.</p>
+        <p><strong>Examples</strong>: Adding vectors, scaling arrays, applying math functions.</p>
+
+        <h3>Simple Map Example</h3>
+        <pre><code>__global__ void map_pattern(float *input, float *output, float scale, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N) return;
+    output[idx] = input[idx] * scale;  // Each thread: one operation
+}</code></pre>
+        <p><strong>Why it works</strong>: No dependencies between elements. Thread 5's work doesn't affect thread 10's work.</p>
+        <p><strong>Performance</strong>: Memory-bound (limited by how fast you can read/write data).</p>
+
+        <h2>Pattern 2: Reduce - Summing/Combining Elements</h2>
+        <p><strong>Use when</strong>: You need to combine all elements into one value (sum, max, min, etc.).</p>
+        <p><strong>Challenge</strong>: Sequential sum is slow. Parallel tree reduction is fast!</p>
+
+        <h3>Tree Reduction Example</h3>
+        <pre><code>__global__ void reduce_sum(float *input, float *block_sums, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+
+    __shared__ float shared_data[256];
+
+    // Load data
+    shared_data[tid] = (idx < N) ? input[idx] : 0.0f;
+    __syncthreads();
+
+    // Tree reduction: halve active threads each step
+    for (int stride = blockDim.x/2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_data[tid] += shared_data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Thread 0 writes this block's sum
+    if (tid == 0) block_sums[blockIdx.x] = shared_data[0];
+}</code></pre>
+        <p><strong>Why it works</strong>: Instead of N sequential steps, do log₂N parallel steps.</p>
+        <p><strong>Speedup</strong>: From O(N) to O(log N) time!</p>
+
+        <h2>Pattern 3: Scan - Running Totals</h2>
+        <p><strong>Use when</strong>: Each output needs the sum/total of all previous elements.</p>
+        <p><strong>Examples</strong>: Cumulative sums, finding positions in sorted data.</p>
+
+        <h3>Parallel Scan Example (Hillis-Steele)</h3>
+        <pre><code>__global__ void scan_hillis_steele(float *input, float *output, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+
+    __shared__ float temp[256];
+
+    temp[tid] = (idx < N) ? input[idx] : 0.0f;
+    __syncthreads();
+
+    // Each step: add from increasing distances
+    for (int offset = 1; offset < blockDim.x; offset *= 2) {
+        float val = 0.0f;
+        if (tid >= offset) {
+            val = temp[tid - offset];
+        }
+        __syncthreads();
+        if (tid >= offset) {
+            temp[tid] += val;
+        }
+        __syncthreads();
+    }
+
+    if (idx < N) output[idx] = temp[tid];
+}</code></pre>
+        <p><strong>Input</strong>: [1, 2, 3, 4]</p>
+        <p><strong>Output</strong>: [1, 3, 6, 10] (cumulative sums)</p>
+
+        <h2>Pattern 4: Stencil - Neighborhood Operations</h2>
+        <p><strong>Use when</strong>: Each output depends on nearby inputs.</p>
+        <p><strong>Examples</strong>: Image blurring, physics simulations, edge detection.</p>
+
+        <h3>1D Stencil Example (3-point average)</h3>
+        <pre><code>__global__ void stencil_1d(float *input, float *output, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+
+    __shared__ float shared[258];  // Block data + halo
+
+    // Load main data
+    if (idx < N) {
+        shared[tid + 1] = input[idx];
+    } else {
+        shared[tid + 1] = 0.0f;
+    }
+
+    // Load halo (boundary elements)
+    if (tid == 0) {
+        shared[0] = (idx > 0) ? input[idx - 1] : 0.0f;
+    }
+    if (tid == blockDim.x - 1) {
+        shared[tid + 2] = (idx < N - 1) ? input[idx + 1] : 0.0f;
+    }
+    __syncthreads();
+
+    // Compute average of 3 neighbors
+    if (idx < N) {
+        float left = shared[tid];
+        float center = shared[tid + 1];
+        float right = shared[tid + 2];
+        output[idx] = (left + center + right) / 3.0f;
+    }
+}</code></pre>
+        <p><strong>Why shared memory?</strong> Instead of 768 global memory loads, do 258 loads + fast shared reads.</p>
+
+        <h2>Hands-On: Run All Patterns</h2>
+        <p>The code demonstrates all four patterns with working examples:</p>
+        <pre><code>nvcc classical_algorithms.cu -o patterns_demo
+./patterns_demo</code></pre>
+        <p>You'll see:</p>
+        <ul>
+            <li><strong>Map</strong>: Element-wise scaling</li>
+            <li><strong>Reduce</strong>: Sum of 1024 elements</li>
+            <li><strong>Scan</strong>: Cumulative sums</li>
+            <li><strong>Stencil</strong>: 3-point averaging</li>
+        </ul>
+
+        <h2>Key Experiments</h2>
+
+        <h3>1. Modify the Map Operation</h3>
+        <pre><code>// Try different operations
+output[idx] = sin(input[idx]) + cos(input[idx]);
+output[idx] = (input[idx] > 0.5f) ? 1.0f : 0.0f;  // Threshold</code></pre>
+
+        <h3>2. Change Reduction Operation</h3>
+        <pre><code>// Instead of sum, find maximum
+if (tid < stride) {
+    shared_data[tid] = max(shared_data[tid], shared_data[tid + stride]);
+}</code></pre>
+
+        <h3>3. Modify Stencil Pattern</h3>
+        <p>// 5-point stencil instead of 3-point</p>
+        <p>// Need bigger halo region!</p>
+
+        <h2>When NOT to Use These Patterns</h2>
+        <ul>
+            <li><strong>Small data</strong>: CPU might be faster due to GPU launch overhead</li>
+            <li><strong>Sequential dependencies</strong>: If each step depends on the previous result</li>
+            <li><strong>Random memory access</strong>: Breaks coalescing, kills performance</li>
+        </ul>
+
+        <h2>Real-World Applications</h2>
+        <ul>
+            <li><strong>Map</strong>: Image processing, neural network forward pass</li>
+            <li><strong>Reduce</strong>: Computing loss in ML, finding best matches</li>
+            <li><strong>Scan</strong>: Sorting algorithms, parallel prefix sums</li>
+            <li><strong>Stencil</strong>: Game physics, weather simulation, computer vision</li>
+        </ul>
+
+        <h2>Next Steps</h2>
+        <p>You now have tools for most parallel computations! In Chapter 5, we'll connect this to real Python/PyTorch code.</p>
+
+        <h2>Key Takeaways</h2>
+        <ul>
+            <li><strong>Map</strong>: Independent element operations</li>
+            <li><strong>Reduce</strong>: Tree-based aggregation (fast!)</li>
+            <li><strong>Scan</strong>: Parallel prefix computations</li>
+            <li><strong>Stencil</strong>: Neighborhood processing with shared memory</li>
+            <li><strong>These patterns solve 90% of parallel problems</strong></li>
+            <li><strong>Always analyze dependencies first</strong></li>
+        </ul>
+    </div>
+
+    <div id="chapter5" class="chapter">
+        <h1>Chapter 5: Connect CUDA to Python/PyTorch - Build Real Applications</h1>
+        <p>You've learned CUDA fundamentals. Now let's connect this to real Python code! You'll build custom operations that work seamlessly with PyTorch and machine learning.</p>
+
+        <h2>What You'll Build</h2>
+        <p>A complete PyTorch extension with:</p>
+        <ul>
+            <li>Custom CUDA kernels for performance-critical operations</li>
+            <li>Automatic gradients for training neural networks</li>
+            <li>Python interface that feels like normal PyTorch</li>
+            <li>Performance benchmarks showing speedups</li>
+        </ul>
+
+        <h2>The Big Picture</h2>
+        <p>Your CUDA knowledge → PyTorch extension → Faster ML models</p>
+
+        <h2>Quick Start: Run the Examples</h2>
+        <p>First, check your setup:</p>
+        <pre><code># Check CUDA and PyTorch
+python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+nvcc --version</code></pre>
+
+        <h2>Method 1: Install the Extension (Easiest)</h2>
+        <pre><code>cd Chapter\ 5/
+pip install .</code></pre>
+        <p>This compiles everything and installs the <code>custom_ops</code> module.</p>
+
+        <h2>Method 2: JIT Compilation (For Development)</h2>
+        <p>Create <code>load_extension.py</code>:</p>
+        <pre><code>from torch.utils.cpp_extension import load
+
+# Compile and load the extension
+custom_ops = load(
+    name='custom_ops',
+    sources=['custom_ops.cpp', 'custom_kernels.cu'],
+    extra_cuda_cflags=['-O3', '--use_fast_math'],
+    verbose=True
+)
+
+print("Extension loaded successfully!")</code></pre>
+        <p>Run it:</p>
+        <pre><code>python load_extension.py</code></pre>
+
+        <h2>Test It Works</h2>
+        <pre><code>python test_custom_ops.py</code></pre>
+        <p>You should see all tests pass, including performance benchmarks.</p>
+
+        <h2>What the Code Does</h2>
+
+        <h3>Fused Operation: <code>relu(input * scale + bias)</code></h3>
+        <p>Combines 3 operations into 1 kernel - saves memory bandwidth and kernel launches.</p>
+
+        <h3>In Python:</h3>
+        <pre><code>import torch
+import custom_ops
+
+# Create data on GPU
+input_tensor = torch.randn(32, 64, device='cuda', requires_grad=True)
+bias = torch.randn(64, device='cuda', requires_grad=True)
+
+# Your custom operation
+output = custom_ops.fused_op_forward(input_tensor, bias, scale=2.0)
+
+# Automatic gradients work!
+loss = output.sum()
+loss.backward()
+print("Gradients computed:", input_tensor.grad is not None)</code></pre>
+
+        <h3>Performance Comparison</h3>
+        <p>The tests show your custom kernel vs PyTorch's separate operations:</p>
+        <pre><code>Custom fused kernel: 0.45 ms
+PyTorch separate ops: 0.67 ms
+Speedup: 1.5x</code></pre>
+        <p><strong>Why faster?</strong> One kernel launch instead of three, no intermediate memory writes.</p>
+
+        <h2>Build Your Own Operation</h2>
+        <p>Let's add a simple element-wise square operation:</p>
+
+        <h3>1. Add CUDA Kernel (<code>custom_kernels.cu</code>)</h3>
+        <pre><code>__global__ void square_kernel(const float* input, float* output, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N) return;
+    output[idx] = input[idx] * input[idx];
+}
+
+torch::Tensor square_cuda(torch::Tensor input) {
+    const int N = input.numel();
+    auto output = torch::empty_like(input);
+    
+    const int threads = 256;
+    const int blocks = (N + threads - 1) / threads;
+    
+    square_kernel<<<blocks, threads>>>(input.data_ptr<float>(),
+                                       output.data_ptr<float>(), N);
+    return output;
+}</code></pre>
+
+        <h3>2. Add C++ Binding (<code>custom_ops.cpp</code>)</h3>
+        <pre><code>torch::Tensor square_cuda(torch::Tensor input);  // Declaration
+
+class SquareFunction : public torch::autograd::Function<SquareFunction> {
+public:
+    static torch::Tensor forward(torch::autograd::AutogradContext *ctx,
+                                torch::Tensor input) {
+        TORCH_CHECK(input.is_cuda(), "Input must be CUDA tensor");
+        ctx->save_for_backward({input});
+        return square_cuda(input);
+    }
+    
+    static torch::autograd::tensor_list backward(
+        torch::autograd::AutogradContext *ctx,
+        torch::autograd::tensor_list grad_outputs)
+    {
+        auto input = ctx->get_saved_variables()[0];
+        auto grad_output = grad_outputs[0];
+        // d/dx(x²) = 2x
+        auto grad_input = 2.0 * input * grad_output;
+        return {grad_input};
+    }
+};
+
+torch::Tensor square_forward(torch::Tensor input) {
+    return SquareFunction::apply(input);
+}
+
+// In PYBIND11_MODULE:
+m.def("square_forward", &square_forward, "Element-wise square");</code></pre>
+
+        <h3>3. Test It</h3>
+        <pre><code>import torch
+import custom_ops
+
+x = torch.randn(10, device='cuda', requires_grad=True)
+y = custom_ops.square_forward(x)  # y = x²
+loss = y.sum()
+loss.backward()
+
+print("x:", x)
+print("y:", y) 
+print("x.grad:", x.grad)  # Should be 2*x</code></pre>
+
+        <h2>Use in Neural Networks</h2>
+        <p>Wrap your operation in a PyTorch module:</p>
+        <pre><code>import torch.nn as nn
+import custom_ops
+
+class CustomLayer(nn.Module):
+    def __init__(self, features):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(features, features))
+        self.bias = nn.Parameter(torch.zeros(features))
+    
+    def forward(self, x):
+        # Use your custom fused operation
+        return custom_ops.fused_op_forward(
+            torch.matmul(x, self.weight), 
+            self.bias, 
+            scale=1.0
+        )
+
+# Build model
+model = nn.Sequential(
+    nn.Linear(784, 256),
+    CustomLayer(256),  # Your custom CUDA layer
+    nn.Linear(256, 10)
+).cuda()
+
+# Train normally
+optimizer = torch.optim.Adam(model.parameters())
+# ... training loop ...</code></pre>
+
+        <h2>When to Use Custom CUDA</h2>
+        <p><strong>Use custom CUDA when:</strong></p>
+        <ul>
+            <li>PyTorch operations are too slow for your bottleneck</li>
+            <li>You need a specific operation not in PyTorch</li>
+            <li>Memory bandwidth is the limiting factor</li>
+            <li>You want to fuse multiple operations</li>
+        </ul>
+        <p><strong>Don't use custom CUDA for:</strong></p>
+        <ul>
+            <li>Simple operations (PyTorch is already optimized)</li>
+            <li>Small tensors (GPU launch overhead dominates)</li>
+            <li>Operations that aren't your bottleneck</li>
+        </ul>
+
+        <h2>Debug Common Issues</h2>
+
+        <h3>Build Errors</h3>
+        <pre><code># CUDA version mismatch
+pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+# Missing CUDA
+export CUDA_HOME=/usr/local/cuda</code></pre>
+
+        <h3>Runtime Errors</h3>
+        <pre><code># Tensors not on GPU
+x = x.cuda()
+
+# Wrong tensor types
+x = x.float()</code></pre>
+
+        <h3>Performance Issues</h3>
+        <pre><code># Profile your code
+with torch.profiler.profile() as prof:
+    # your code
+print(prof)</code></pre>
+
+        <h2>Key Takeaways</h2>
+        <ul>
+            <li><strong>Extensions connect CUDA to Python</strong> with automatic gradients</li>
+            <li><strong>Fuse operations</strong> for better performance (memory bandwidth savings)</li>
+            <li><strong>Test thoroughly</strong> - gradients, performance, edge cases</li>
+            <li><strong>Start simple</strong> - get one operation working, then add complexity</li>
+            <li><strong>Profile first</strong> - ensure custom CUDA actually helps</li>
+        </ul>
+
+        <h2>You're Done!</h2>
+        <p>You now have the complete pipeline:</p>
+        <ol>
+            <li><strong>Understand GPU architecture</strong> (Chapters 1-3)</li>
+            <li><strong>Write parallel algorithms</strong> (Chapter 4)</li>
+            <li><strong>Connect to real applications</strong> (Chapter 5)</li>
+        </ol>
+        <p>Go build something fast!</p>
+    </div>
+</body>
+</html>
